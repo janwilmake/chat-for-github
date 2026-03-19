@@ -1,174 +1,52 @@
-# repo-prompt
+# Chat for GitHub
 
-Fetch repository context from [uithub.com](https://uithub.com) and build system prompts optimized for AI coding agents.
+Chat with any GitHub repository using AI. Hosted at [chat.forgithub.com](https://chat.forgithub.com).
 
-Discovers and prioritizes **every known agent instruction standard**:
+Load one or more repos, and start a conversation powered by Claude. The AI can read files, run bash commands, and explore the codebase to answer your questions.
 
-| File / Pattern | Tool / Standard |
-|---|---|
-| `AGENTS.md`, `AGENTS.override.md` | Cross-tool open standard (Linux Foundation) |
-| `CLAUDE.md` | Claude Code (Anthropic) |
-| `GEMINI.md` | Gemini CLI (Google) |
-| `.cursorrules`, `.cursor/rules/*.mdc` | Cursor |
-| `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md` | GitHub Copilot |
-| `.windsurfrules`, `.windsurf/rules/*.md` | Windsurf |
-| `.clinerules` | Cline / Roo Code / Kilo Code |
-| `CONVENTIONS.md` | General conventions |
-| `CONTRIBUTING.md` | Contribution guidelines |
-| `README.md` (any nesting) | Project documentation |
+## Features
 
-## Install
-
-```bash
-npm install repo-prompt
-```
-
-Zero dependencies — just needs `fetch()` (Node 18+, Deno, Bun, Cloudflare Workers).
-
-## Quick Start
-
-```ts
-import { buildRepoPrompt } from "repo-prompt";
-
-const result = await buildRepoPrompt({
-  owner: "vercel",
-  repo: "next.js",
-  maxTokens: 30000,
-});
-
-// result.prompt — ready-to-use system prompt string
-// result.tree — the file tree with token counts
-// result.agentFiles — all discovered agent instruction files
-// result.readmeFiles — all discovered README files
-// result.size — token/size metadata
-```
-
-## What the prompt looks like
-
-The assembled prompt follows best practices for coding agent context:
-
-```
-# Repository: vercel/next.js
-Total size: ~1,234,567 tokens
-
----
-## Agent Instructions
-
-### AGENTS.md (cross-tool standard)
-<!-- source: AGENTS.md -->
-
-<contents of AGENTS.md>
-
-### CLAUDE.md (Claude Code)
-<!-- source: CLAUDE.md -->
-
-<contents of CLAUDE.md>
-
----
-## README Files
-
-### README.md
-<!-- source: README.md -->
-
-<contents of README.md>
-
----
-## File Tree
-The following is the repository file tree with approximate token counts per file:
-
-├── src/
-│   ├── index.ts (450 tokens)
-│   └── utils.ts (200 tokens)
-└── package.json (100 tokens)
-```
-
-Agent instructions are placed **first** (before READMEs and tree) because agents prioritize content that appears early in their context window.
-
-## API
-
-### `buildRepoPrompt(options): Promise<RepoPromptResult>`
-
-The main function. Fetches everything and assembles the prompt.
-
-```ts
-interface RepoPromptOptions {
-  owner: string;          // GitHub owner
-  repo: string;           // GitHub repo name
-  branch?: string;        // Branch (default: main)
-  apiKey?: string;        // GitHub token for private repos
-  bearerToken?: string;   // uithub OAuth bearer token
-  maxTokens?: number;     // Token budget (default: 50000)
-  extraIncludes?: string[]; // Additional glob patterns to include
-  includeTree?: boolean;  // Include file tree (default: true)
-  baseUrl?: string;       // uithub base URL
-}
-```
-
-### `getAgentFiles(options): Promise<AgentFile[]>`
-
-Fetch only the agent instruction files — useful when you have your own prompt template.
-
-```ts
-const files = await getAgentFiles({ owner: "facebook", repo: "react" });
-
-for (const f of files) {
-  console.log(f.path, f.kind, f.content.length);
-}
-```
-
-### `getRepoTree(options): Promise<{ tree, size }>`
-
-Fetch only the file tree with token counts.
-
-```ts
-const { tree, size } = await getRepoTree({ owner: "denoland", repo: "deno" });
-console.log(`Total: ${size.totalTokens} tokens`);
-```
-
-### `renderTree(tree, prefix?): string`
-
-Render a uithub token tree object as a pretty-printed string with `├──` connectors.
-
-### Constants
-
-- `AGENT_FILE_GLOBS` — all glob patterns used to discover agent files
-- `README_GLOBS` — glob patterns for README files
-- `KIND_LABELS` — human-readable labels for each `AgentFileKind`
-
-## Use Cases
-
-**As an MCP server context provider** — fetch repo context on-demand for any MCP tool that needs codebase awareness.
-
-**In a CLI tool** — pipe the prompt into any LLM:
-
-```bash
-npx tsx examples/basic.ts facebook react | llm -s "Summarize the architecture"
-```
-
-**In a Cloudflare Worker** — build a repo-aware API:
-
-```ts
-export default {
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const [owner, repo] = url.pathname.slice(1).split("/");
-
-    const result = await buildRepoPrompt({ owner, repo, maxTokens: 20000 });
-    return new Response(result.prompt, {
-      headers: { "Content-Type": "text/plain" },
-    });
-  },
-};
-```
+- **Multi-repo support** — load multiple repositories into a single conversation
+- **Full codebase access** — all repo files are fetched and mounted in a virtual filesystem at `/workspace/{owner}/{repo}/`
+- **Tool use** — Claude can run bash commands (`grep`, `find`, `cat`, `jq`, etc.) and read files to explore the code
+- **Agent instructions** — automatically discovers and prioritizes `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md`, and other AI coding standards
+- **Private repos** — OAuth login via [uithub](https://uithub.com) to access private repositories
+- **Conversation history** — saved locally in your browser
+- **Dark mode** — follows system preference
 
 ## How It Works
 
-1. **Tree fetch** — calls `uithub.com/{owner}/{repo}?omitFiles=true` to get the full file tree with token counts
-2. **Agent files fetch** — calls uithub with an `include` glob covering all known agent instruction patterns + READMEs
-3. **Classification** — each returned file is classified by its kind (AGENTS.md, CLAUDE.md, etc.)
-4. **Assembly** — builds the prompt with agent instructions first (highest priority), then READMEs, then the file tree
+```
+Browser → Cloudflare Worker → uithub (repo context) + Anthropic (Claude Sonnet 4.6)
+```
 
-Only **2 HTTP requests** to uithub per call.
+1. You enter one or more GitHub repos (e.g. `vercel/next.js`)
+2. The worker fetches the repo tree and agent instruction files from [uithub.com](https://uithub.com)
+3. A system prompt is built with agent instructions, READMEs, and the file tree
+4. When you send a message, the worker fetches all repo files, mounts them in a virtual bash environment, and streams Claude's response back — including any tool calls
+
+## Tech Stack
+
+- **Runtime:** Cloudflare Workers
+- **AI:** Claude Sonnet 4.6 via [Vercel AI SDK](https://sdk.vercel.ai) + `@ai-sdk/anthropic`
+- **Repo context:** [uithub.com](https://uithub.com)
+- **Virtual shell:** [just-bash](https://www.npmjs.com/package/just-bash)
+- **Sessions:** Cloudflare Durable Objects (SQLite-backed)
+- **Frontend:** Single HTML file, vanilla JS, no framework
+
+## Development
+
+```bash
+npm install
+npm run dev     # start local dev server
+npm run deploy  # deploy to Cloudflare
+```
+
+Requires a `wrangler.jsonc` with Durable Object bindings and the following secrets configured via `wrangler secret put`:
+
+- `ANTHROPIC_API_KEY`
+- `UITHUB_CLIENT_ID`
+- `UITHUB_CLIENT_SECRET`
 
 ## License
 
