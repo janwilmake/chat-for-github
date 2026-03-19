@@ -1,16 +1,63 @@
 /// <reference types="@cloudflare/workers-types" />
 import { DurableObject } from "cloudflare:workers";
-import { streamText, tool, stepCountIs } from "ai";
+import { streamText, tool, stepCountIs, type LanguageModelV1 } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createXai } from "@ai-sdk/xai";
 import { Bash } from "just-bash";
 import { z } from "zod";
 //@ts-ignore
 import indexHtml from "./index.html";
+
 export interface Env {
   AuthSessions: DurableObjectNamespace<AuthSessions>;
-  ANTHROPIC_API_KEY: string;
+  AI_PROVIDER?: string;
+  AI_MODEL?: string;
+  AI_API_KEY?: string;
   UITHUB_CLIENT_ID?: string;
   UITHUB_CLIENT_SECRET?: string;
+}
+
+const PROVIDER_MODELS: Record<string, { name: string; keyUrl: string; models: { id: string; label: string }[] }> = {
+  anthropic: {
+    name: "Anthropic",
+    keyUrl: "https://console.anthropic.com/account/keys",
+    models: [
+      { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+      { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
+      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+    ],
+  },
+  openai: {
+    name: "OpenAI",
+    keyUrl: "https://platform.openai.com/api-keys",
+    models: [
+      { id: "gpt-4.1", label: "GPT-4.1" },
+      { id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+      { id: "o3", label: "o3" },
+      { id: "o4-mini", label: "o4-mini" },
+    ],
+  },
+  xai: {
+    name: "xAI",
+    keyUrl: "https://console.x.ai",
+    models: [
+      { id: "grok-3", label: "Grok 3" },
+      { id: "grok-3-mini", label: "Grok 3 Mini" },
+    ],
+  },
+};
+
+function createModel(provider: string, model: string, apiKey: string): LanguageModelV1 {
+  switch (provider) {
+    case "openai":
+      return createOpenAI({ apiKey })(model);
+    case "xai":
+      return createXai({ apiKey })(model);
+    case "anthropic":
+    default:
+      return createAnthropic({ apiKey })(model);
+  }
 }
 
 // ── Durable Object for OAuth sessions ────────────────────────────────────────
@@ -363,8 +410,18 @@ async function handleChat(
     owner?: string;
     repo?: string;
     systemPrompt: string;
+    provider?: string;
+    model?: string;
+    apiKey?: string;
   };
   const { messages, systemPrompt } = body;
+
+  const aiProvider = body.provider || env.AI_PROVIDER || "anthropic";
+  const aiModel = body.model || env.AI_MODEL || "claude-sonnet-4-6";
+  const aiApiKey = body.apiKey || env.AI_API_KEY;
+  if (!aiApiKey) {
+    return new Response("No API key configured. Open Settings to add one.", { status: 400 });
+  }
   const repos: string[] = body.repos?.length
     ? body.repos
     : body.owner && body.repo
@@ -392,10 +449,10 @@ async function handleChat(
   );
   const bash = new Bash({ files: allFiles, cwd: "/workspace" });
 
-  const provider = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const model = createModel(aiProvider, aiModel, aiApiKey);
 
   const result = streamText({
-    model: provider("claude-sonnet-4-6"),
+    model,
     system: systemPrompt,
     messages,
     tools: {
@@ -460,12 +517,13 @@ export default {
     env: Env,
     _ctx: ExecutionContext
   ): Promise<Response> {
-    if (!env.ANTHROPIC_API_KEY) {
-      return new Response("ANTHROPIC_API_KEY not configured", { status: 500 });
-    }
-
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // ── API: available providers/models ───────────────────────────────
+    if (path === "/api/config") {
+      return Response.json({ providers: PROVIDER_MODELS });
+    }
 
     const sessionId = getSessionId(request) ?? generateRandom(32);
     const doId = env.AuthSessions.idFromName("global");

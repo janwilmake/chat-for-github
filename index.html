@@ -157,6 +157,7 @@
 
   <div class="card">
     <div id="authStatus" class="auth-status no">Checking authentication...</div>
+    <div id="modelBadge" style="margin-bottom:1rem;font-size:0.8rem;color:var(--text-muted);font-family:var(--mono);"></div>
 
     <label for="repoInput">Repositories</label>
     <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
@@ -178,6 +179,7 @@
 <div id="chat">
   <div class="topbar">
     <span class="repo-name" id="repoLabel"></span>
+    <span id="topbarModel" style="font-size:0.75rem;color:var(--text-muted);font-family:var(--mono);"></span>
     <span class="spacer"></span>
     <button class="btn btn-sm" onclick="showPromptModal()">View System Prompt</button>
     <button class="btn btn-sm" onclick="newConversation()">New Chat</button>
@@ -365,22 +367,43 @@ function renderSidebar() {
 }
 
 // ── Init: parse ?repo= from URL ─────────────────────────────────────
+let currentModelLabel = "";
+
 (async function init() {
   renderSidebar();
 
+  // Fetch model config and auth in parallel
+  const [configRes, authRes] = await Promise.all([
+    fetch("/api/config").catch(() => null),
+    fetch("/auth/status").catch(() => null),
+  ]);
+
+  // Model config
+  try {
+    if (configRes && configRes.ok) {
+      const cfg = await configRes.json();
+      const providerInfo = cfg.providers?.[cfg.provider];
+      const modelInfo = providerInfo?.models?.find(m => m.id === cfg.model);
+      currentModelLabel = modelInfo ? `${providerInfo.name} ${modelInfo.label}` : `${cfg.provider}/${cfg.model}`;
+      document.getElementById("modelBadge").textContent = `Model: ${currentModelLabel}`;
+      document.getElementById("topbarModel").textContent = currentModelLabel;
+    }
+  } catch {}
+
   // Check auth
   try {
-    const res = await fetch("/auth/status");
-    const data = await res.json();
-    const el = document.getElementById("authStatus");
-    if (data.authenticated) {
-      el.textContent = "Signed in with uithub";
-      el.className = "auth-status ok";
-      document.getElementById("loginBtn").textContent = "Sign out";
-      document.getElementById("loginBtn").onclick = () => location.href = "/auth/logout";
-    } else {
-      el.textContent = "Not signed in (public repos only)";
-      el.className = "auth-status no";
+    if (authRes && authRes.ok) {
+      const data = await authRes.json();
+      const el = document.getElementById("authStatus");
+      if (data.authenticated) {
+        el.textContent = "Signed in with uithub";
+        el.className = "auth-status ok";
+        document.getElementById("loginBtn").textContent = "Sign out";
+        document.getElementById("loginBtn").onclick = () => location.href = "/auth/logout";
+      } else {
+        el.textContent = "Not signed in (public repos only)";
+        el.className = "auth-status no";
+      }
     }
   } catch {}
 
