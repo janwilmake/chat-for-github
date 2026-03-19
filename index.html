@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Chat for GitHub</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --text-muted: #656d76; --accent: #0969da;
+    --accent-hover: #0550ae; --green: #1a7f37; --red: #cf222e;
+    --user-msg: #0969da; --code-bg: rgba(175,184,193,0.2);
+    --tool-call-bg: rgba(9,105,218,0.06); --tool-call-border: rgba(9,105,218,0.2);
+    --tool-result-bg: rgba(26,127,55,0.06); --tool-result-border: rgba(26,127,55,0.2);
+    --radius: 8px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-muted: #8b949e; --accent: #58a6ff;
+      --accent-hover: #79c0ff; --green: #3fb950; --red: #f85149;
+      --user-msg: #1f6feb; --code-bg: rgba(110,118,129,0.2);
+      --tool-call-bg: rgba(88,166,255,0.08); --tool-call-border: rgba(88,166,255,0.2);
+      --tool-result-bg: rgba(63,185,80,0.08); --tool-result-border: rgba(63,185,80,0.2);
+    }
+  }
+
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── Sidebar ────────────────────────────────────────────────────── */
+  .sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; left: 0; top: 0; z-index: 50; }
+  .sidebar-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+  .sidebar-header h2 { font-size: 0.85rem; flex: 1; }
+  .sidebar-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+  .sidebar-item { padding: 0.6rem 0.75rem; border-radius: var(--radius); cursor: pointer; margin-bottom: 2px; display: flex; flex-direction: column; gap: 0.15rem; position: relative; }
+  .sidebar-item:hover { background: var(--bg); }
+  .sidebar-item.active { background: var(--bg); border: 1px solid var(--border); }
+  .sidebar-item .conv-title { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar-item .conv-date { font-size: 0.7rem; color: var(--text-muted); }
+  .sidebar-item .conv-delete { display: none; position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; padding: 0.15rem 0.35rem; line-height: 1; }
+  .sidebar-item:hover .conv-delete { display: block; }
+  .sidebar-item .conv-delete:hover { color: var(--red); border-color: var(--red); }
+  .sidebar-empty { padding: 1rem; color: var(--text-muted); font-size: 0.8rem; text-align: center; }
+
+  .app-layout { display: flex; margin-left: 260px; min-height: 100vh; flex: 1; }
+  .app-main { flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── Setup screen ─────────────────────────────────────────────────── */
+  #setup { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+  #setup h1 { font-size: 1.75rem; margin-bottom: 0.5rem; }
+  #setup p.sub { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 100%; max-width: 480px; }
+  .card label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+  .card input { width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem; margin-bottom: 1rem; outline: none; }
+  .card input:focus { border-color: var(--accent); }
+  .separator { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
+
+  .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 0.9rem; cursor: pointer; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+  .btn-row { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+
+  .auth-status { margin-bottom: 1.5rem; font-size: 0.85rem; }
+  .auth-status.ok { color: var(--green); }
+  .auth-status.no { color: var(--text-muted); }
+  #error { color: var(--red); font-size: 0.85rem; margin-top: 0.5rem; min-height: 1.2em; }
+
+  /* ── Chat screen ──────────────────────────────────────────────────── */
+  #chat { display: none; flex-direction: column; height: 100vh; }
+
+  .topbar { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .topbar .repo-name { font-weight: 600; font-size: 0.95rem; }
+  .topbar .spacer { flex: 1; }
+
+  .messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  .msg { max-width: 85%; padding: 0.75rem 1rem; border-radius: var(--radius); line-height: 1.55; font-size: 0.9rem; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user-msg); color: #fff; border-bottom-right-radius: 2px; white-space: pre-wrap; }
+  .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+  .msg.assistant pre { background: var(--bg); padding: 0.75rem; border-radius: 4px; overflow-x: auto; margin: 0.5rem 0; font-family: var(--mono); font-size: 0.8rem; }
+  .msg.assistant code { font-family: var(--mono); font-size: 0.85em; background: var(--code-bg); padding: 0.15em 0.35em; border-radius: 3px; }
+  .msg.assistant pre code { background: none; padding: 0; }
+  .msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4, .msg.assistant h5, .msg.assistant h6 { margin: 0.75rem 0 0.25rem; line-height: 1.3; }
+  .msg.assistant h1 { font-size: 1.3em; } .msg.assistant h2 { font-size: 1.15em; } .msg.assistant h3 { font-size: 1.05em; }
+  .msg.assistant ul, .msg.assistant ol { margin: 0.25rem 0; padding-left: 1.5rem; }
+  .msg.assistant li { margin: 0.15rem 0; }
+  .msg.assistant blockquote { border-left: 3px solid var(--border); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--text-muted); }
+  .msg.assistant table { border-collapse: collapse; margin: 0.5rem 0; width: 100%; }
+  .msg.assistant th, .msg.assistant td { border: 1px solid var(--border); padding: 0.35rem 0.6rem; text-align: left; font-size: 0.85rem; }
+  .msg.assistant th { background: var(--bg); }
+  .msg.assistant hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+  .msg.assistant a { color: var(--accent); text-decoration: none; }
+  .msg.assistant a:hover { text-decoration: underline; }
+  .msg.assistant img { max-width: 100%; border-radius: 4px; }
+  .msg.assistant p { margin: 0.25rem 0; }
+
+  .tool-call { align-self: flex-start; max-width: 85%; padding: 0.5rem 0.75rem; border-radius: var(--radius); background: var(--tool-call-bg); border: 1px solid var(--tool-call-border); font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+  .tool-call .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .tool-result { align-self: flex-start; max-width: 85%; padding: 0.5rem 0.75rem; border-radius: var(--radius); background: var(--tool-result-bg); border: 1px solid var(--tool-result-border); font-family: var(--mono); font-size: 0.75rem; color: var(--green); min-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+  .tool-result .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .token-bar { display: none; padding: 0.35rem 1rem; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; font-size: 0.75rem; font-family: var(--mono); color: var(--text-muted); gap: 1.5rem; }
+  .token-bar.visible { display: flex; }
+  .token-bar span { white-space: nowrap; }
+  .token-bar .total { color: var(--accent); font-weight: 600; }
+
+  .input-area { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .input-area textarea { flex: 1; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 0.9rem; resize: none; outline: none; min-height: 42px; max-height: 120px; }
+  .input-area textarea:focus { border-color: var(--accent); }
+
+  .typing { align-self: flex-start; color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0; }
+
+  /* ── Modal ─────────────────────────────────────────────────────────── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; padding: 2rem; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 800px; max-height: 80vh; display: flex; flex-direction: column; }
+  .modal-header { display: flex; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border); }
+  .modal-header h2 { flex: 1; font-size: 1rem; }
+  .modal-body { flex: 1; overflow-y: auto; padding: 1rem; }
+  .modal-body pre { font-family: var(--mono); font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+
+  .repo-tag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; font-family: var(--mono); }
+  .repo-tag button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 0; line-height: 1; }
+  .repo-tag button:hover { color: var(--red); }
+
+  .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>Conversations</h2>
+    <button class="btn btn-sm" onclick="newConversation()">+ New</button>
+  </div>
+  <div class="sidebar-list" id="sidebarList"></div>
+</div>
+
+<div class="app-layout">
+<div class="app-main">
+
+<!-- ── Setup Screen ──────────────────────────────────────────────────── -->
+<div id="setup">
+  <h1>Chat for GitHub</h1>
+  <p class="sub">Chat with any GitHub repository using AI</p>
+
+  <div class="card">
+    <div id="authStatus" class="auth-status no">Checking authentication...</div>
+
+    <label for="repoInput">Repositories</label>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+      <input type="text" id="repoInput" placeholder="owner/repo (e.g. vercel/next.js)" style="margin-bottom:0">
+      <button class="btn btn-sm" onclick="addRepoFromInput()">Add</button>
+    </div>
+    <div id="repoTags" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;min-height:1.5em;"></div>
+
+    <div id="error"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="startBtn" onclick="startChat()">Start Chat</button>
+      <button class="btn" id="loginBtn" onclick="location.href='/auth/login'">Sign in with uithub</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chat Screen ───────────────────────────────────────────────────── -->
+<div id="chat">
+  <div class="topbar">
+    <span class="repo-name" id="repoLabel"></span>
+    <span class="spacer"></span>
+    <button class="btn btn-sm" onclick="showPromptModal()">View System Prompt</button>
+    <button class="btn btn-sm" onclick="newConversation()">New Chat</button>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="token-bar" id="tokenBar">
+    <span>system: <b id="tokSystem">0</b></span>
+    <span>input: <b id="tokInput">0</b></span>
+    <span>output: <b id="tokOutput">0</b></span>
+    <span>tool in: <b id="tokToolIn">0</b></span>
+    <span>tool out: <b id="tokToolOut">0</b></span>
+    <span class="total">total: <b id="tokTotal">0</b></span>
+  </div>
+
+  <div class="input-area">
+    <textarea id="userInput" rows="1" placeholder="Ask about the repository..." onkeydown="handleKey(event)"></textarea>
+    <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+</div><!-- .app-main -->
+</div><!-- .app-layout -->
+
+<!-- ── System Prompt Modal ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="promptModal" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>System Prompt</h2>
+      <button class="btn btn-sm" onclick="copyPrompt()">Copy</button>
+      &nbsp;
+      <button class="btn btn-sm" onclick="document.getElementById('promptModal').classList.remove('open')">Close</button>
+    </div>
+    <div class="modal-body">
+      <pre id="promptContent"></pre>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+<script>
+// ── State ────────────────────────────────────────────────────────────
+let currentRepos = []; // ["owner/repo", ...]
+let systemPrompt = "";
+let chatMessages = []; // {role, content} for API
+let isStreaming = false;
+let systemPromptTokens = 0;
+let currentConversationId = null;
+let pendingRepos = []; // repos queued in the setup form
+
+// Rough token estimate: ~4 chars per token (good enough for live display)
+function estimateTokens(text) { return Math.ceil(text.length / 4); }
+
+// ── Repo tag UI in setup form ────────────────────────────────────────
+function addRepoFromInput() {
+  const input = document.getElementById("repoInput");
+  const val = input.value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+  if (val && val.includes("/") && !pendingRepos.includes(val)) {
+    pendingRepos.push(val);
+    renderRepoTags();
+  }
+  input.value = "";
+  input.focus();
+}
+
+function removeRepoPending(repo) {
+  pendingRepos = pendingRepos.filter(r => r !== repo);
+  renderRepoTags();
+}
+
+function renderRepoTags() {
+  const container = document.getElementById("repoTags");
+  container.innerHTML = pendingRepos.map(r =>
+    `<span class="repo-tag">${escapeHtml(r)}<button onclick="removeRepoPending('${escapeHtml(r)}')">&times;</button></span>`
+  ).join("");
+}
+
+// Handle Enter in repo input to add tag
+document.getElementById("repoInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addRepoFromInput(); }
+});
+
+// ── Conversation persistence ─────────────────────────────────────────
+const STORAGE_KEY = "repo-prompt-conversations";
+
+function loadConversations() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+}
+
+function saveConversations(convos) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(convos));
+}
+
+function saveCurrentConversation() {
+  if (!currentConversationId || currentRepos.length === 0) return;
+  const convos = loadConversations();
+  const idx = convos.findIndex(c => c.id === currentConversationId);
+  const data = {
+    id: currentConversationId,
+    repos: currentRepos,
+    date: convos[idx]?.date || new Date().toISOString(),
+    systemPrompt,
+    messages: chatMessages,
+    messagesHtml: document.getElementById("messages").innerHTML,
+  };
+  if (idx >= 0) convos[idx] = data; else convos.unshift(data);
+  saveConversations(convos);
+  renderSidebar();
+}
+
+function deleteConversation(id, e) {
+  e.stopPropagation();
+  const convos = loadConversations().filter(c => c.id !== id);
+  saveConversations(convos);
+  if (currentConversationId === id) newConversation();
+  renderSidebar();
+}
+
+function switchConversation(id) {
+  if (isStreaming) return;
+  const convos = loadConversations();
+  const conv = convos.find(c => c.id === id);
+  if (!conv) return;
+
+  currentConversationId = conv.id;
+  currentRepos = conv.repos || (conv.owner ? [`${conv.owner}/${conv.repo}`] : []);
+  systemPrompt = conv.systemPrompt;
+  systemPromptTokens = estimateTokens(systemPrompt);
+  chatMessages = conv.messages || [];
+
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("chat").style.display = "flex";
+  document.getElementById("repoLabel").textContent = currentRepos.join(", ");
+  document.getElementById("promptContent").textContent = systemPrompt;
+  document.getElementById("messages").innerHTML = conv.messagesHtml || "";
+
+  updateUrlFromRepos(currentRepos);
+  renderSidebar();
+  document.getElementById("userInput").focus();
+}
+
+function newConversation() {
+  currentConversationId = null;
+  currentRepos = [];
+  systemPrompt = "";
+  chatMessages = [];
+  systemPromptTokens = 0;
+  pendingRepos = [];
+
+  document.getElementById("setup").style.display = "flex";
+  document.getElementById("chat").style.display = "none";
+  document.getElementById("messages").innerHTML = "";
+  document.getElementById("tokenBar").classList.remove("visible");
+  renderRepoTags();
+  history.pushState(null, "", "/");
+  renderSidebar();
+}
+
+function updateUrlFromRepos(repos) {
+  const url = new URL(location.origin);
+  repos.forEach(r => url.searchParams.append("repo", r));
+  history.pushState(null, "", url.pathname + url.search);
+}
+
+function renderSidebar() {
+  const list = document.getElementById("sidebarList");
+  const convos = loadConversations();
+  if (convos.length === 0) {
+    list.innerHTML = '<div class="sidebar-empty">No conversations yet</div>';
+    return;
+  }
+  list.innerHTML = convos.map(c => {
+    const d = new Date(c.date);
+    const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const active = c.id === currentConversationId ? " active" : "";
+    const repos = c.repos || (c.owner ? [`${c.owner}/${c.repo}`] : []);
+    const title = repos.join(", ");
+    return `<div class="sidebar-item${active}" onclick="switchConversation('${c.id}')">
+      <span class="conv-title">${escapeHtml(title)}</span>
+      <span class="conv-date">${dateStr}</span>
+      <button class="conv-delete" onclick="deleteConversation('${c.id}', event)" title="Delete">&times;</button>
+    </div>`;
+  }).join("");
+}
+
+// ── Init: parse ?repo= from URL ─────────────────────────────────────
+(async function init() {
+  renderSidebar();
+
+  // Check auth
+  try {
+    const res = await fetch("/auth/status");
+    const data = await res.json();
+    const el = document.getElementById("authStatus");
+    if (data.authenticated) {
+      el.textContent = "Signed in with uithub";
+      el.className = "auth-status ok";
+      document.getElementById("loginBtn").textContent = "Sign out";
+      document.getElementById("loginBtn").onclick = () => location.href = "/auth/logout";
+    } else {
+      el.textContent = "Not signed in (public repos only)";
+      el.className = "auth-status no";
+    }
+  } catch {}
+
+  // Parse ?repo= query params and auto-start
+  const params = new URLSearchParams(location.search);
+  const repos = params.getAll("repo").filter(r => r.includes("/"));
+  if (repos.length > 0) {
+    pendingRepos = repos;
+    renderRepoTags();
+    startChat();
+  }
+})();
+
+// ── Start chat ──────────────────────────────────────────────────────
+async function startChat() {
+  // Also add anything typed in the input
+  const inputVal = document.getElementById("repoInput").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+  if (inputVal && inputVal.includes("/") && !pendingRepos.includes(inputVal)) {
+    pendingRepos.push(inputVal);
+    renderRepoTags();
+  }
+  document.getElementById("repoInput").value = "";
+
+  const errorEl = document.getElementById("error");
+  if (pendingRepos.length === 0) { errorEl.textContent = "Add at least one repository."; return; }
+  errorEl.textContent = "";
+
+  const btn = document.getElementById("startBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span> Loading...';
+
+  try {
+    const res = await fetch("/api/prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repos: pendingRepos }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    currentRepos = [...pendingRepos];
+    systemPrompt = data.prompt;
+    systemPromptTokens = estimateTokens(systemPrompt);
+    chatMessages = [];
+    currentConversationId = "conv-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+
+    updateUrlFromRepos(currentRepos);
+
+    // Switch to chat view
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("chat").style.display = "flex";
+    document.getElementById("repoLabel").textContent = currentRepos.join(", ");
+    document.getElementById("promptContent").textContent = systemPrompt;
+    document.getElementById("messages").innerHTML = "";
+
+    const repoList = currentRepos.map(r => `**${r}**`).join(", ");
+    appendMessage("assistant",
+      `${currentRepos.length === 1 ? "Repository" : "Repositories"} ${repoList} loaded (~${data.size.totalTokens.toLocaleString()} tokens).\n\nI have access to a bash tool to explore and work with the repository files. What would you like to know?`
+    );
+
+    saveCurrentConversation();
+    document.getElementById("userInput").focus();
+  } catch (e) {
+    errorEl.textContent = e.message || "Failed to load repositories";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "Start Chat";
+  }
+}
+
+// ── Send message ────────────────────────────────────────────────────
+async function sendMessage() {
+  if (isStreaming) return;
+  const input = document.getElementById("userInput");
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  input.style.height = "auto";
+  userAtBottom = true;
+  chatMessages.push({ role: "user", content: text });
+  appendMessage("user", text);
+
+  isStreaming = true;
+  document.getElementById("sendBtn").disabled = true;
+
+  // Show token bar and init counts
+  const inputTokens = estimateTokens(chatMessages.map(m => m.content).join(""));
+  updateTokenBar(systemPromptTokens, inputTokens, 0, 0, 0);
+  document.getElementById("tokenBar").classList.add("visible");
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: chatMessages,
+        repos: currentRepos,
+        systemPrompt,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      appendMessage("assistant", `Error: ${errText}`);
+      return;
+    }
+
+    await processUIStream(res.body);
+  } catch (e) {
+    appendMessage("assistant", `Error: ${e.message}`);
+  } finally {
+    isStreaming = false;
+    document.getElementById("sendBtn").disabled = false;
+    document.getElementById("userInput").focus();
+    saveCurrentConversation();
+  }
+}
+
+// ── Process the AI SDK UI message stream (SSE with JSON chunks) ─────
+async function processUIStream(body) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentAssistantText = "";
+  let currentAssistantEl = null;
+  let currentToolCallEl = null;
+  let currentToolInput = "";
+  let currentToolName = "";
+  let totalOutputChars = 0;
+  let totalToolInChars = 0;
+  let totalToolOutChars = 0;
+  const inputTokens = estimateTokens(chatMessages.map(m => m.content).join(""));
+  const tokUp = () => updateTokenBar(systemPromptTokens, inputTokens, Math.ceil(totalOutputChars / 4), Math.ceil(totalToolInChars / 4), Math.ceil(totalToolOutChars / 4));
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6);
+      if (data === "[DONE]") continue;
+
+      let chunk;
+      try { chunk = JSON.parse(data); } catch { continue; }
+
+      switch (chunk.type) {
+        case "text-delta": {
+          if (!currentAssistantEl) {
+            currentAssistantEl = createMessageEl("assistant");
+            currentAssistantText = "";
+          }
+          currentAssistantText += chunk.delta;
+          totalOutputChars += chunk.delta.length;
+          currentAssistantEl.innerHTML = renderMarkdown(currentAssistantText);
+          tokUp();
+          scrollToBottom();
+          break;
+        }
+
+        case "tool-input-start": {
+          currentToolCallEl = document.createElement("div");
+          currentToolCallEl.className = "tool-call";
+          currentToolName = chunk.toolName || "tool";
+          currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>`;
+          currentToolInput = "";
+          document.getElementById("messages").appendChild(currentToolCallEl);
+          scrollToBottom();
+          break;
+        }
+
+        case "tool-input-delta": {
+          if (currentToolCallEl) {
+            currentToolInput += chunk.inputTextDelta;
+            totalToolInChars += (chunk.inputTextDelta || "").length;
+            tokUp();
+            // Try to parse and display the command
+            try {
+              const parsed = JSON.parse(currentToolInput);
+              const display = parsed.command || parsed.path || JSON.stringify(parsed);
+              currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
+            } catch {
+              // Still accumulating JSON
+            }
+            scrollToBottom();
+          }
+          break;
+        }
+
+        case "tool-input-available": {
+          // Full tool input is available
+          if (currentToolCallEl && chunk.input) {
+            const display = chunk.input.command || chunk.input.path || JSON.stringify(chunk.input);
+            currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
+            scrollToBottom();
+          }
+          break;
+        }
+
+        case "tool-output-available": {
+          const resultEl = document.createElement("div");
+          resultEl.className = "tool-result";
+          const output = typeof chunk.output === "string"
+            ? chunk.output
+            : JSON.stringify(chunk.output, null, 2);
+          totalToolOutChars += output.length;
+          tokUp();
+          const truncated = output.length > 2000
+            ? output.slice(0, 2000) + "\n... (truncated)"
+            : output;
+          resultEl.innerHTML = `<div class="label">output</div>${escapeHtml(truncated)}`;
+          document.getElementById("messages").appendChild(resultEl);
+          currentToolCallEl = null;
+          currentToolInput = "";
+          scrollToBottom();
+          break;
+        }
+
+        case "tool-output-error": {
+          totalToolOutChars += (chunk.errorText || "").length;
+          tokUp();
+          const errEl = document.createElement("div");
+          errEl.className = "tool-result";
+          errEl.style.borderColor = "rgba(248,81,73,0.3)";
+          errEl.style.color = "var(--red)";
+          errEl.innerHTML = `<div class="label">error</div>${escapeHtml(chunk.errorText || "Tool error")}`;
+          document.getElementById("messages").appendChild(errEl);
+          currentToolCallEl = null;
+          currentToolInput = "";
+          scrollToBottom();
+          break;
+        }
+
+        case "error": {
+          appendMessage("assistant", `Error: ${chunk.errorText || "Unknown error"}`);
+          break;
+        }
+
+        case "finish": {
+          // Finalize assistant text
+          if (currentAssistantEl && currentAssistantText) {
+            chatMessages.push({ role: "assistant", content: currentAssistantText });
+            currentAssistantEl = null;
+            currentAssistantText = "";
+          }
+          break;
+        }
+
+        case "finish-step": {
+          // Step finished, but more steps may follow (multi-step tool use)
+          // Reset the assistant element so next step's text gets a new bubble
+          if (currentAssistantEl && currentAssistantText) {
+            currentAssistantEl = null;
+          }
+          break;
+        }
+
+        // Ignore: text-start, text-end, start, start-step, reasoning-*, source-*, file, etc.
+      }
+    }
+  }
+
+  // Finalize any remaining text
+  if (currentAssistantEl && currentAssistantText) {
+    chatMessages.push({ role: "assistant", content: currentAssistantText });
+  }
+}
+
+// ── DOM helpers ─────────────────────────────────────────────────────
+function appendMessage(role, text) {
+  const el = createMessageEl(role);
+  if (role === "assistant") {
+    el.innerHTML = renderMarkdown(text);
+  } else {
+    el.textContent = text;
+  }
+  scrollToBottom();
+  return el;
+}
+
+function createMessageEl(role) {
+  const el = document.createElement("div");
+  el.className = `msg ${role}`;
+  document.getElementById("messages").appendChild(el);
+  return el;
+}
+
+function isNearBottom() {
+  const m = document.getElementById("messages");
+  return m.scrollHeight - m.scrollTop - m.clientHeight < 80;
+}
+
+let userAtBottom = true;
+
+document.getElementById("messages").addEventListener("scroll", () => {
+  userAtBottom = isNearBottom();
+});
+
+function scrollToBottom() {
+  if (!userAtBottom) return;
+  const m = document.getElementById("messages");
+  m.scrollTop = m.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function updateTokenBar(system, input, output, toolIn, toolOut) {
+  const fmt = n => n.toLocaleString();
+  document.getElementById("tokSystem").textContent = fmt(system);
+  document.getElementById("tokInput").textContent = fmt(input);
+  document.getElementById("tokOutput").textContent = fmt(output);
+  document.getElementById("tokToolIn").textContent = fmt(toolIn);
+  document.getElementById("tokToolOut").textContent = fmt(toolOut);
+  document.getElementById("tokTotal").textContent = fmt(system + input + output + toolIn + toolOut);
+}
+
+// Full markdown renderer using marked
+const markedInstance = new marked.Marked({ breaks: true, gfm: true });
+function renderMarkdown(text) {
+  return markedInstance.parse(text);
+}
+
+// ── UI interactions ─────────────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  // Auto-resize textarea
+  const ta = e.target;
+  setTimeout(() => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; }, 0);
+}
+
+function showPromptModal() {
+  document.getElementById("promptModal").classList.add("open");
+}
+
+function closeModal(e) {
+  if (e.target === e.currentTarget) {
+    document.getElementById("promptModal").classList.remove("open");
+  }
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(systemPrompt);
+  const btn = event.target;
+  btn.textContent = "Copied!";
+  setTimeout(() => btn.textContent = "Copy", 1500);
+}
+
+// Close modal on Escape
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("promptModal").classList.remove("open");
+});
+</script>
+</body>
+</html>
