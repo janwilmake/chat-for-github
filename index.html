@@ -37,6 +37,7 @@
   .sidebar-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
   .sidebar-header h2 { font-size: 0.85rem; flex: 1; }
   .sidebar-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+  .sidebar-footer { padding: 0.5rem; border-top: 1px solid var(--border); }
   .sidebar-item { padding: 0.6rem 0.75rem; border-radius: var(--radius); cursor: pointer; margin-bottom: 2px; display: flex; flex-direction: column; gap: 0.15rem; position: relative; }
   .sidebar-item:hover { background: var(--bg); }
   .sidebar-item.active { background: var(--bg); border: 1px solid var(--border); }
@@ -57,8 +58,8 @@
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 100%; max-width: 480px; }
   .card label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
-  .card input { width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem; margin-bottom: 1rem; outline: none; }
-  .card input:focus { border-color: var(--accent); }
+  .card input, .card select { width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem; margin-bottom: 1rem; outline: none; }
+  .card input:focus, .card select:focus { border-color: var(--accent); }
   .separator { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
 
   .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 0.9rem; cursor: pointer; transition: all 0.15s; }
@@ -128,6 +129,21 @@
   .modal-body { flex: 1; overflow-y: auto; padding: 1rem; }
   .modal-body pre { font-family: var(--mono); font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
 
+  /* ── Config modal form ──────────────────────────────────────────────── */
+  .config-form label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; font-weight: 500; }
+  .config-form select, .config-form input { width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.9rem; margin-bottom: 0.25rem; outline: none; font-family: var(--font); }
+  .config-form select:focus, .config-form input:focus { border-color: var(--accent); }
+  .config-form .field { margin-bottom: 1rem; }
+  .config-form .hint { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+  .config-form .hint a { color: var(--accent); text-decoration: none; }
+  .config-form .hint a:hover { text-decoration: underline; }
+  .config-saved { display: none; color: var(--green); font-size: 0.85rem; margin-left: 0.75rem; }
+  .config-saved.show { display: inline; }
+
+  .model-badge { font-size: 0.75rem; color: var(--text-muted); font-family: var(--mono); padding: 0.2rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+  .model-badge:hover { border-color: var(--accent); color: var(--accent); }
+  .model-badge.unconfigured { color: var(--red); border-color: var(--red); }
+
   .repo-tag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; font-family: var(--mono); }
   .repo-tag button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 0; line-height: 1; }
   .repo-tag button:hover { color: var(--red); }
@@ -145,6 +161,9 @@
     <button class="btn btn-sm" onclick="newConversation()">+ New</button>
   </div>
   <div class="sidebar-list" id="sidebarList"></div>
+  <div class="sidebar-footer">
+    <button class="btn btn-sm" style="width:100%" onclick="showConfigModal()">Settings</button>
+  </div>
 </div>
 
 <div class="app-layout">
@@ -157,7 +176,10 @@
 
   <div class="card">
     <div id="authStatus" class="auth-status no">Checking authentication...</div>
-    <div id="modelBadge" style="margin-bottom:1rem;font-size:0.8rem;color:var(--text-muted);font-family:var(--mono);"></div>
+
+    <div style="margin-bottom:1.25rem;">
+      <span class="model-badge unconfigured" id="setupModelBadge" onclick="showConfigModal()">No API key configured</span>
+    </div>
 
     <label for="repoInput">Repositories</label>
     <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
@@ -179,7 +201,7 @@
 <div id="chat">
   <div class="topbar">
     <span class="repo-name" id="repoLabel"></span>
-    <span id="topbarModel" style="font-size:0.75rem;color:var(--text-muted);font-family:var(--mono);"></span>
+    <span class="model-badge" id="topbarModelBadge" onclick="showConfigModal()"></span>
     <span class="spacer"></span>
     <button class="btn btn-sm" onclick="showPromptModal()">View System Prompt</button>
     <button class="btn btn-sm" onclick="newConversation()">New Chat</button>
@@ -220,19 +242,146 @@
   </div>
 </div>
 
+<!-- ── Settings Modal ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="configModal" onclick="closeModal(event)">
+  <div class="modal" style="max-width:480px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <span class="config-saved" id="configSaved">Saved</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-sm" onclick="document.getElementById('configModal').classList.remove('open')">Close</button>
+    </div>
+    <div class="modal-body config-form">
+      <div class="field">
+        <label for="cfgProvider">Provider</label>
+        <select id="cfgProvider" onchange="onProviderChange()"></select>
+      </div>
+      <div class="field">
+        <label for="cfgModel">Model</label>
+        <select id="cfgModel"></select>
+      </div>
+      <div class="field">
+        <label for="cfgApiKey">API Key</label>
+        <input type="password" id="cfgApiKey" placeholder="Paste your API key" autocomplete="off">
+        <div class="hint" id="cfgKeyHint"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 <script>
 // ── State ────────────────────────────────────────────────────────────
-let currentRepos = []; // ["owner/repo", ...]
+let currentRepos = [];
 let systemPrompt = "";
-let chatMessages = []; // {role, content} for API
+let chatMessages = [];
 let isStreaming = false;
 let systemPromptTokens = 0;
 let currentConversationId = null;
-let pendingRepos = []; // repos queued in the setup form
+let pendingRepos = [];
 
-// Rough token estimate: ~4 chars per token (good enough for live display)
+// Provider/model config from server
+let providerCatalog = {};
+
+// Rough token estimate
 function estimateTokens(text) { return Math.ceil(text.length / 4); }
+
+// ── Config persistence (localStorage) ────────────────────────────────
+const CONFIG_KEY = "chat-for-github-config";
+
+function loadConfig() {
+  try { return JSON.parse(localStorage.getItem(CONFIG_KEY)) || {}; } catch { return {}; }
+}
+
+function getConfig() {
+  const cfg = loadConfig();
+  return {
+    provider: cfg.provider || "anthropic",
+    model: cfg.model || "claude-sonnet-4-6",
+    apiKey: cfg.apiKey || "",
+  };
+}
+
+function getModelLabel() {
+  const cfg = getConfig();
+  const provider = providerCatalog[cfg.provider];
+  if (!provider) return cfg.model;
+  const model = provider.models.find(m => m.id === cfg.model);
+  return model ? `${provider.name} / ${model.label}` : `${provider.name} / ${cfg.model}`;
+}
+
+function updateModelBadges() {
+  const cfg = getConfig();
+  const label = cfg.apiKey ? getModelLabel() : "No API key configured";
+  const unconfigured = !cfg.apiKey;
+
+  const setupBadge = document.getElementById("setupModelBadge");
+  setupBadge.textContent = label;
+  setupBadge.className = "model-badge" + (unconfigured ? " unconfigured" : "");
+
+  const topBadge = document.getElementById("topbarModelBadge");
+  topBadge.textContent = label;
+  topBadge.className = "model-badge" + (unconfigured ? " unconfigured" : "");
+}
+
+// ── Config modal ─────────────────────────────────────────────────────
+function showConfigModal() {
+  const cfg = getConfig();
+  populateProviderSelect(cfg.provider);
+  populateModelSelect(cfg.provider, cfg.model);
+  document.getElementById("cfgApiKey").value = cfg.apiKey;
+  updateKeyHint(cfg.provider);
+  document.getElementById("configSaved").classList.remove("show");
+  document.getElementById("configModal").classList.add("open");
+}
+
+function populateProviderSelect(selected) {
+  const sel = document.getElementById("cfgProvider");
+  sel.innerHTML = Object.entries(providerCatalog).map(([id, p]) =>
+    `<option value="${id}"${id === selected ? " selected" : ""}>${escapeHtml(p.name)}</option>`
+  ).join("");
+}
+
+function populateModelSelect(providerId, selectedModel) {
+  const sel = document.getElementById("cfgModel");
+  const provider = providerCatalog[providerId];
+  if (!provider) { sel.innerHTML = ""; return; }
+  sel.innerHTML = provider.models.map(m =>
+    `<option value="${m.id}"${m.id === selectedModel ? " selected" : ""}>${escapeHtml(m.label)}</option>`
+  ).join("");
+}
+
+function updateKeyHint(providerId) {
+  const provider = providerCatalog[providerId];
+  const hint = document.getElementById("cfgKeyHint");
+  if (provider && provider.keyUrl) {
+    hint.innerHTML = `<a href="${escapeHtml(provider.keyUrl)}" target="_blank" rel="noopener">Get a ${escapeHtml(provider.name)} API key &rarr;</a>`;
+  } else {
+    hint.textContent = "";
+  }
+}
+
+function onProviderChange() {
+  const providerId = document.getElementById("cfgProvider").value;
+  const provider = providerCatalog[providerId];
+  const firstModel = provider?.models?.[0]?.id || "";
+  populateModelSelect(providerId, firstModel);
+  updateKeyHint(providerId);
+}
+
+function saveConfig() {
+  const cfg = {
+    provider: document.getElementById("cfgProvider").value,
+    model: document.getElementById("cfgModel").value,
+    apiKey: document.getElementById("cfgApiKey").value.trim(),
+  };
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+  updateModelBadges();
+  const saved = document.getElementById("configSaved");
+  saved.classList.add("show");
+  setTimeout(() => saved.classList.remove("show"), 2000);
+}
 
 // ── Repo tag UI in setup form ────────────────────────────────────────
 function addRepoFromInput() {
@@ -366,29 +515,30 @@ function renderSidebar() {
   }).join("");
 }
 
-// ── Init: parse ?repo= from URL ─────────────────────────────────────
-let currentModelLabel = "";
-
+// ── Init ─────────────────────────────────────────────────────────────
 (async function init() {
   renderSidebar();
 
-  // Fetch model config and auth in parallel
+  // Fetch provider catalog and auth status in parallel
   const [configRes, authRes] = await Promise.all([
     fetch("/api/config").catch(() => null),
     fetch("/auth/status").catch(() => null),
   ]);
 
-  // Model config
+  // Load provider catalog
   try {
     if (configRes && configRes.ok) {
       const cfg = await configRes.json();
-      const providerInfo = cfg.providers?.[cfg.provider];
-      const modelInfo = providerInfo?.models?.find(m => m.id === cfg.model);
-      currentModelLabel = modelInfo ? `${providerInfo.name} ${modelInfo.label}` : `${cfg.provider}/${cfg.model}`;
-      document.getElementById("modelBadge").textContent = `Model: ${currentModelLabel}`;
-      document.getElementById("topbarModel").textContent = currentModelLabel;
+      providerCatalog = cfg.providers || {};
     }
   } catch {}
+
+  updateModelBadges();
+
+  // If no API key configured, auto-open settings
+  if (!getConfig().apiKey) {
+    setTimeout(() => showConfigModal(), 300);
+  }
 
   // Check auth
   try {
@@ -419,7 +569,6 @@ let currentModelLabel = "";
 
 // ── Start chat ──────────────────────────────────────────────────────
 async function startChat() {
-  // Also add anything typed in the input
   const inputVal = document.getElementById("repoInput").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
   if (inputVal && inputVal.includes("/") && !pendingRepos.includes(inputVal)) {
     pendingRepos.push(inputVal);
@@ -429,6 +578,7 @@ async function startChat() {
 
   const errorEl = document.getElementById("error");
   if (pendingRepos.length === 0) { errorEl.textContent = "Add at least one repository."; return; }
+  if (!getConfig().apiKey) { errorEl.textContent = "Add an API key in Settings first."; showConfigModal(); return; }
   errorEl.textContent = "";
 
   const btn = document.getElementById("startBtn");
@@ -452,7 +602,6 @@ async function startChat() {
 
     updateUrlFromRepos(currentRepos);
 
-    // Switch to chat view
     document.getElementById("setup").style.display = "none";
     document.getElementById("chat").style.display = "flex";
     document.getElementById("repoLabel").textContent = currentRepos.join(", ");
@@ -481,6 +630,13 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
 
+  const cfg = getConfig();
+  if (!cfg.apiKey) {
+    appendMessage("assistant", "No API key configured. Click the model badge or open Settings to add one.");
+    showConfigModal();
+    return;
+  }
+
   input.value = "";
   input.style.height = "auto";
   userAtBottom = true;
@@ -490,7 +646,6 @@ async function sendMessage() {
   isStreaming = true;
   document.getElementById("sendBtn").disabled = true;
 
-  // Show token bar and init counts
   const inputTokens = estimateTokens(chatMessages.map(m => m.content).join(""));
   updateTokenBar(systemPromptTokens, inputTokens, 0, 0, 0);
   document.getElementById("tokenBar").classList.add("visible");
@@ -503,6 +658,9 @@ async function sendMessage() {
         messages: chatMessages,
         repos: currentRepos,
         systemPrompt,
+        provider: cfg.provider,
+        model: cfg.model,
+        apiKey: cfg.apiKey,
       }),
     });
 
@@ -585,21 +743,17 @@ async function processUIStream(body) {
             currentToolInput += chunk.inputTextDelta;
             totalToolInChars += (chunk.inputTextDelta || "").length;
             tokUp();
-            // Try to parse and display the command
             try {
               const parsed = JSON.parse(currentToolInput);
               const display = parsed.command || parsed.path || JSON.stringify(parsed);
               currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
-            } catch {
-              // Still accumulating JSON
-            }
+            } catch {}
             scrollToBottom();
           }
           break;
         }
 
         case "tool-input-available": {
-          // Full tool input is available
           if (currentToolCallEl && chunk.input) {
             const display = chunk.input.command || chunk.input.path || JSON.stringify(chunk.input);
             currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
@@ -648,7 +802,6 @@ async function processUIStream(body) {
         }
 
         case "finish": {
-          // Finalize assistant text
           if (currentAssistantEl && currentAssistantText) {
             chatMessages.push({ role: "assistant", content: currentAssistantText });
             currentAssistantEl = null;
@@ -658,20 +811,15 @@ async function processUIStream(body) {
         }
 
         case "finish-step": {
-          // Step finished, but more steps may follow (multi-step tool use)
-          // Reset the assistant element so next step's text gets a new bubble
           if (currentAssistantEl && currentAssistantText) {
             currentAssistantEl = null;
           }
           break;
         }
-
-        // Ignore: text-start, text-end, start, start-step, reasoning-*, source-*, file, etc.
       }
     }
   }
 
-  // Finalize any remaining text
   if (currentAssistantEl && currentAssistantText) {
     chatMessages.push({ role: "assistant", content: currentAssistantText });
   }
@@ -727,7 +875,6 @@ function updateTokenBar(system, input, output, toolIn, toolOut) {
   document.getElementById("tokTotal").textContent = fmt(system + input + output + toolIn + toolOut);
 }
 
-// Full markdown renderer using marked
 const markedInstance = new marked.Marked({ breaks: true, gfm: true });
 function renderMarkdown(text) {
   return markedInstance.parse(text);
@@ -736,7 +883,6 @@ function renderMarkdown(text) {
 // ── UI interactions ─────────────────────────────────────────────────
 function handleKey(e) {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  // Auto-resize textarea
   const ta = e.target;
   setTimeout(() => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; }, 0);
 }
@@ -747,7 +893,7 @@ function showPromptModal() {
 
 function closeModal(e) {
   if (e.target === e.currentTarget) {
-    document.getElementById("promptModal").classList.remove("open");
+    e.target.classList.remove("open");
   }
 }
 
@@ -758,9 +904,12 @@ function copyPrompt() {
   setTimeout(() => btn.textContent = "Copy", 1500);
 }
 
-// Close modal on Escape
+// Close modals on Escape
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") document.getElementById("promptModal").classList.remove("open");
+  if (e.key === "Escape") {
+    document.getElementById("promptModal").classList.remove("open");
+    document.getElementById("configModal").classList.remove("open");
+  }
 });
 </script>
 </body>

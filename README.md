@@ -6,6 +6,7 @@ Load one or more repos, and start a conversation. The AI can read files, run bas
 
 ## Features
 
+- **Bring your own key** — configure your preferred AI provider and model in the Settings modal
 - **Multi-provider** — supports Anthropic, OpenAI, and xAI (Grok)
 - **Multi-repo support** — load multiple repositories into a single conversation
 - **Full codebase access** — all repo files are fetched and mounted in a virtual filesystem at `/workspace/{owner}/{repo}/`
@@ -29,16 +30,19 @@ Load one or more repos, and start a conversation. The AI can read files, run bas
 | **xAI** | Grok 3 | `grok-3` |
 | | Grok 3 Mini | `grok-3-mini` |
 
+Get an API key: [Anthropic](https://console.anthropic.com/account/keys) | [OpenAI](https://platform.openai.com/api-keys) | [xAI](https://console.x.ai)
+
 ## How It Works
 
 ```
-Browser → Cloudflare Worker → uithub (repo context) + AI provider (configurable)
+Browser → Cloudflare Worker → uithub (repo context) + AI provider (user-configured)
 ```
 
-1. You enter one or more GitHub repos (e.g. `vercel/next.js`)
-2. The worker fetches the repo tree and agent instruction files from [uithub.com](https://uithub.com)
-3. A system prompt is built with agent instructions, READMEs, and the file tree
-4. When you send a message, the worker fetches all repo files, mounts them in a virtual bash environment, and streams the AI response back — including any tool calls
+1. You pick a provider, model, and paste your API key in **Settings** (stored in your browser)
+2. You enter one or more GitHub repos (e.g. `vercel/next.js`)
+3. The worker fetches the repo tree and agent instruction files from [uithub.com](https://uithub.com)
+4. A system prompt is built with agent instructions, READMEs, and the file tree
+5. When you send a message, the worker fetches all repo files, mounts them in a virtual bash environment, and streams the AI response back — including any tool calls
 
 ## Tech Stack
 
@@ -59,15 +63,17 @@ npm run deploy  # deploy to Cloudflare
 
 ### Configuration
 
-Set these via `wrangler secret put` (production) or `.env` (local dev):
+Users configure their AI provider, model, and API key through the in-app **Settings** modal. Keys are stored in the browser's localStorage and sent per-request.
 
-| Variable | Required | Description |
-|---|---|---|
-| `AI_PROVIDER` | yes | `anthropic`, `openai`, or `xai` |
-| `AI_MODEL` | yes | Model ID from the table above |
-| `AI_API_KEY` | yes | API key for the selected provider |
-| `UITHUB_CLIENT_ID` | no | uithub OAuth client ID (auto-registered if omitted) |
-| `UITHUB_CLIENT_SECRET` | no | uithub OAuth client secret |
+For self-hosted deployments, you can optionally set server-side fallback values via `wrangler secret put`:
+
+| Variable | Description |
+|---|---|
+| `AI_PROVIDER` | `anthropic`, `openai`, or `xai` |
+| `AI_MODEL` | Model ID from the table above |
+| `AI_API_KEY` | API key for the selected provider |
+| `UITHUB_CLIENT_ID` | uithub OAuth client ID (auto-registered if omitted) |
+| `UITHUB_CLIENT_SECRET` | uithub OAuth client secret |
 
 ## License
 
