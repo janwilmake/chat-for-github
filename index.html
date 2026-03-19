@@ -106,8 +106,8 @@
 
   .tool-call { align-self: flex-start; max-width: 85%; padding: 0.5rem 0.75rem; border-radius: var(--radius); background: var(--tool-call-bg); border: 1px solid var(--tool-call-border); font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
   .tool-call .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .tool-result { align-self: flex-start; max-width: 85%; padding: 0.5rem 0.75rem; border-radius: var(--radius); background: var(--tool-result-bg); border: 1px solid var(--tool-result-border); font-family: var(--mono); font-size: 0.75rem; color: var(--green); min-height: 300px; overflow-y: auto; white-space: pre-wrap; }
-  .tool-result .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .tool-call .tool-tokens { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
+  .tool-call .tool-tokens.error { color: var(--red); }
 
   .token-bar { display: none; padding: 0.35rem 1rem; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; font-size: 0.75rem; font-family: var(--mono); color: var(--text-muted); gap: 1.5rem; }
   .token-bar.visible { display: flex; }
@@ -148,8 +148,65 @@
   .repo-tag button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 0; line-height: 1; }
   .repo-tag button:hover { color: var(--red); }
 
+  .gh-icon { color: var(--text-muted); transition: color 0.15s; line-height: 1; }
+  .gh-icon:hover { color: var(--text); }
+
+  .strategy-picker { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius); }
+  .strategy-picker label { display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem 0.6rem; cursor: pointer; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; position: relative; }
+  .strategy-picker label:not(:last-child) { border-right: 1px solid var(--border); }
+  .strategy-picker input { display: none; }
+  .strategy-picker input:checked + span { color: var(--accent); font-weight: 600; }
+  .strategy-picker label:has(input:checked) { background: var(--tool-call-bg); color: var(--accent); }
+  .strategy-picker .tip { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; font-size: 0.65rem; border-radius: 50%; background: var(--border); color: var(--text-muted); cursor: help; font-weight: 700; flex-shrink: 0; position: relative; }
+  .strategy-picker .tip::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); font-size: 0.75rem; font-weight: 400; padding: 0.5rem 0.65rem; border-radius: 6px; white-space: normal; width: 220px; line-height: 1.4; pointer-events: none; display: none; z-index: 200; }
+  .strategy-picker .tip:hover::after { display: block; }
+
   .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Hamburger button (hidden on desktop) ───────────────────────── */
+  .hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.4rem; cursor: pointer; padding: 0.25rem; line-height: 1; flex-shrink: 0; }
+
+  /* ── Sidebar backdrop (mobile only) ─────────────────────────────── */
+  .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
+  .sidebar-backdrop.open { display: block; }
+
+  /* ── Mobile ─────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.2s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .app-layout { margin-left: 0; }
+    .hamburger { display: block; }
+
+    #setup { padding: 1rem; min-height: calc(100vh - 0px); }
+    #setup h1 { font-size: 1.35rem; }
+    .card { padding: 1.25rem; }
+
+    .topbar { gap: 0.5rem; padding: 0.6rem 0.75rem; flex-wrap: wrap; }
+    .topbar .repo-name { font-size: 0.85rem; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topbar .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    .messages { padding: 0.75rem; }
+    .msg { max-width: 95%; }
+    .tool-call, .tool-result { max-width: 95%; }
+    .tool-result { min-height: 150px; }
+
+    .token-bar { gap: 0.5rem; padding: 0.3rem 0.75rem; font-size: 0.65rem; flex-wrap: wrap; }
+
+    .input-area { padding: 0.5rem 0.75rem; }
+
+    .modal-overlay { padding: 0.75rem; }
+    .modal { max-height: 90vh; }
+
+    /* Show delete button always on mobile (no hover) */
+    .sidebar-item .conv-delete { display: block; }
+  }
+
+  /* ── Small phones ──────────────────────────────────────────────── */
+  @media (max-width: 400px) {
+    .btn-row { flex-direction: column; }
+    .btn-row .btn { width: 100%; justify-content: center; }
+  }
 </style>
 </head>
 <body>
@@ -162,15 +219,23 @@
   </div>
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-footer">
+    <div id="sidebarModelLabel" style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.4rem;text-align:center;font-family:var(--mono);"></div>
     <button class="btn btn-sm" style="width:100%" onclick="showConfigModal()">Settings</button>
   </div>
 </div>
+
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
 <div class="app-layout">
 <div class="app-main">
 
 <!-- ── Setup Screen ──────────────────────────────────────────────────── -->
 <div id="setup">
+  <div style="width:100%;max-width:480px;display:flex;align-items:center;margin-bottom:0.5rem;">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
+    <span style="flex:1"></span>
+    <a href="https://github.com/janwilmake/chat-for-github" target="_blank" rel="noopener" class="gh-icon" title="View on GitHub"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+  </div>
   <h1>Chat for GitHub</h1>
   <p class="sub">Chat with any GitHub repository using AI</p>
 
@@ -188,11 +253,17 @@
     </div>
     <div id="repoTags" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;min-height:1.5em;"></div>
 
+    <label style="margin-bottom:0.25rem">Strategy</label>
+    <div class="strategy-picker" id="setupStrategyPicker" style="margin-bottom:1rem;">
+      <label><input type="radio" name="setupStrategy" value="tree-readmes" checked><span>Tree &amp; READMEs</span><span class="tip" data-tip="Loads the file tree and README/agent instruction files. Fast, low token usage. Uses bash tool for deeper exploration.">?</span></label>
+      <label><input type="radio" name="setupStrategy" value="full-context"><span>Full Context</span><span class="tip" data-tip="Loads ALL file contents into the system prompt. Only for repos under 1M tokens. Higher token usage but no tools needed.">?</span></label>
+    </div>
+
     <div id="error"></div>
 
     <div class="btn-row">
       <button class="btn btn-primary" id="startBtn" onclick="startChat()">Start Chat</button>
-      <button class="btn" id="loginBtn" onclick="location.href='/auth/login'">Sign in with uithub</button>
+      <button class="btn" id="loginBtn" onclick="loginWithRepos()">Sign in with uithub</button>
     </div>
   </div>
 </div>
@@ -200,11 +271,15 @@
 <!-- ── Chat Screen ───────────────────────────────────────────────────── -->
 <div id="chat">
   <div class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
     <span class="repo-name" id="repoLabel"></span>
-    <span class="model-badge" id="topbarModelBadge" onclick="showConfigModal()"></span>
+    <div class="strategy-picker" id="topbarStrategyPicker">
+      <label><input type="radio" name="topbarStrategy" value="tree-readmes" checked><span>Tree &amp; READMEs</span><span class="tip" data-tip="Loads the file tree and README/agent instruction files. Fast, low token usage. Uses bash tool for deeper exploration.">?</span></label>
+      <label><input type="radio" name="topbarStrategy" value="full-context"><span>Full Context</span><span class="tip" data-tip="Loads ALL file contents into the system prompt. Only for repos under 1M tokens. Higher token usage but no tools needed.">?</span></label>
+    </div>
+    <button class="btn btn-sm" id="systemPromptBtn" onclick="showPromptModal()">System Prompt</button>
     <span class="spacer"></span>
-    <button class="btn btn-sm" onclick="showPromptModal()">View System Prompt</button>
-    <button class="btn btn-sm" onclick="newConversation()">New Chat</button>
+    <a href="https://github.com/janwilmake/chat-for-github" target="_blank" rel="noopener" class="gh-icon" title="View on GitHub"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </div>
 
   <div class="messages" id="messages"></div>
@@ -280,6 +355,7 @@ let isStreaming = false;
 let systemPromptTokens = 0;
 let currentConversationId = null;
 let pendingRepos = [];
+let currentStrategy = "tree-readmes";
 
 // Provider/model config from server
 let providerCatalog = {};
@@ -320,9 +396,9 @@ function updateModelBadges() {
   setupBadge.textContent = label;
   setupBadge.className = "model-badge" + (unconfigured ? " unconfigured" : "");
 
-  const topBadge = document.getElementById("topbarModelBadge");
-  topBadge.textContent = label;
-  topBadge.className = "model-badge" + (unconfigured ? " unconfigured" : "");
+  const sidebarLabel = document.getElementById("sidebarModelLabel");
+  sidebarLabel.textContent = label;
+  sidebarLabel.style.color = unconfigured ? "var(--red)" : "var(--text-muted)";
 }
 
 // ── Config modal ─────────────────────────────────────────────────────
@@ -430,13 +506,20 @@ function saveCurrentConversation() {
   const data = {
     id: currentConversationId,
     repos: currentRepos,
+    strategy: currentStrategy,
     date: convos[idx]?.date || new Date().toISOString(),
-    systemPrompt,
     messages: chatMessages,
-    messagesHtml: document.getElementById("messages").innerHTML,
   };
   if (idx >= 0) convos[idx] = data; else convos.unshift(data);
-  saveConversations(convos);
+  try {
+    saveConversations(convos);
+  } catch (e) {
+    // Storage full — drop oldest conversations until it fits
+    while (convos.length > 1) {
+      convos.pop();
+      try { saveConversations(convos); break; } catch {}
+    }
+  }
   renderSidebar();
 }
 
@@ -448,7 +531,7 @@ function deleteConversation(id, e) {
   renderSidebar();
 }
 
-function switchConversation(id) {
+async function switchConversation(id) {
   if (isStreaming) return;
   const convos = loadConversations();
   const conv = convos.find(c => c.id === id);
@@ -456,19 +539,48 @@ function switchConversation(id) {
 
   currentConversationId = conv.id;
   currentRepos = conv.repos || (conv.owner ? [`${conv.owner}/${conv.repo}`] : []);
-  systemPrompt = conv.systemPrompt;
-  systemPromptTokens = estimateTokens(systemPrompt);
   chatMessages = conv.messages || [];
+  const strategy = conv.strategy || "tree-readmes";
+  syncStrategyPickers(strategy);
 
   document.getElementById("setup").style.display = "none";
   document.getElementById("chat").style.display = "flex";
-  document.getElementById("repoLabel").textContent = currentRepos.join(", ");
-  document.getElementById("promptContent").textContent = systemPrompt;
-  document.getElementById("messages").innerHTML = conv.messagesHtml || "";
+  renderRepoLinks();
+
+  // Re-render messages from stored data
+  const messagesEl = document.getElementById("messages");
+  messagesEl.innerHTML = "";
+  for (const msg of chatMessages) {
+    appendMessage(msg.role, msg.content);
+  }
 
   updateUrlFromRepos(currentRepos);
+  closeSidebar();
   renderSidebar();
+
+  // Re-fetch system prompt in background
+  systemPrompt = conv.systemPrompt || "";
+  systemPromptTokens = estimateTokens(systemPrompt);
+  updateStrategyTokenCount();
+  document.getElementById("promptContent").textContent = systemPrompt || "Loading...";
   document.getElementById("userInput").focus();
+
+  if (!systemPrompt) {
+    try {
+      const res = await fetch("/api/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repos: currentRepos, strategy }),
+      });
+      const data = await res.json();
+      if (!data.error) {
+        systemPrompt = data.prompt;
+        systemPromptTokens = estimateTokens(systemPrompt);
+        updateStrategyTokenCount();
+        document.getElementById("promptContent").textContent = systemPrompt;
+      }
+    } catch {}
+  }
 }
 
 function newConversation() {
@@ -478,6 +590,7 @@ function newConversation() {
   chatMessages = [];
   systemPromptTokens = 0;
   pendingRepos = [];
+  syncStrategyPickers("tree-readmes");
 
   document.getElementById("setup").style.display = "flex";
   document.getElementById("chat").style.display = "none";
@@ -485,6 +598,7 @@ function newConversation() {
   document.getElementById("tokenBar").classList.remove("visible");
   renderRepoTags();
   history.pushState(null, "", "/");
+  closeSidebar();
   renderSidebar();
 }
 
@@ -586,10 +700,11 @@ async function startChat() {
   btn.innerHTML = '<span class="loading"></span> Loading...';
 
   try {
+    currentStrategy = getSelectedStrategy();
     const res = await fetch("/api/prompt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repos: pendingRepos }),
+      body: JSON.stringify({ repos: pendingRepos, strategy: currentStrategy }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -601,16 +716,21 @@ async function startChat() {
     currentConversationId = "conv-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
 
     updateUrlFromRepos(currentRepos);
+    syncStrategyPickers(currentStrategy);
 
     document.getElementById("setup").style.display = "none";
     document.getElementById("chat").style.display = "flex";
-    document.getElementById("repoLabel").textContent = currentRepos.join(", ");
+    renderRepoLinks();
     document.getElementById("promptContent").textContent = systemPrompt;
     document.getElementById("messages").innerHTML = "";
 
     const repoList = currentRepos.map(r => `**${r}**`).join(", ");
+    const strategyLabel = currentStrategy === "full-context" ? "Full Context" : "Tree & READMEs";
+    const strategyHint = currentStrategy === "full-context"
+      ? "All file contents are loaded in context."
+      : "I have access to a bash tool to explore and work with the repository files.";
     appendMessage("assistant",
-      `${currentRepos.length === 1 ? "Repository" : "Repositories"} ${repoList} loaded (~${data.size.totalTokens.toLocaleString()} tokens).\n\nI have access to a bash tool to explore and work with the repository files. What would you like to know?`
+      `${currentRepos.length === 1 ? "Repository" : "Repositories"} ${repoList} loaded (~${systemPromptTokens.toLocaleString()} system prompt tokens, ${strategyLabel}).\n\n${strategyHint} What would you like to know?`
     );
 
     saveCurrentConversation();
@@ -657,6 +777,7 @@ async function sendMessage() {
       body: JSON.stringify({
         messages: chatMessages,
         repos: currentRepos,
+        strategy: currentStrategy,
         systemPrompt,
         provider: cfg.provider,
         model: cfg.model,
@@ -688,9 +809,9 @@ async function processUIStream(body) {
   let buffer = "";
   let currentAssistantText = "";
   let currentAssistantEl = null;
-  let currentToolCallEl = null;
-  let currentToolInput = "";
-  let currentToolName = "";
+  const toolCallElements = new Map();
+  const toolCallInputs = new Map();
+  const toolCallNames = new Map();
   let totalOutputChars = 0;
   let totalToolInChars = 0;
   let totalToolOutChars = 0;
@@ -728,25 +849,35 @@ async function processUIStream(body) {
         }
 
         case "tool-input-start": {
-          currentToolCallEl = document.createElement("div");
-          currentToolCallEl.className = "tool-call";
-          currentToolName = chunk.toolName || "tool";
-          currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>`;
-          currentToolInput = "";
-          document.getElementById("messages").appendChild(currentToolCallEl);
+          // Finalize any in-progress assistant text so it doesn't continue into the next step
+          if (currentAssistantEl) {
+            currentAssistantEl = null;
+          }
+          const toolCallId = chunk.toolCallId || ("tc-" + Date.now());
+          const toolName = chunk.toolName || "tool";
+          const el = document.createElement("div");
+          el.className = "tool-call";
+          el.innerHTML = `<div class="label">${escapeHtml(toolName)}</div>`;
+          toolCallElements.set(toolCallId, el);
+          toolCallInputs.set(toolCallId, "");
+          toolCallNames.set(toolCallId, toolName);
+          document.getElementById("messages").appendChild(el);
           scrollToBottom();
           break;
         }
 
         case "tool-input-delta": {
-          if (currentToolCallEl) {
-            currentToolInput += chunk.inputTextDelta;
+          const tcId = chunk.toolCallId;
+          const tcEl = toolCallElements.get(tcId);
+          if (tcEl) {
+            const input = (toolCallInputs.get(tcId) || "") + (chunk.inputTextDelta || "");
+            toolCallInputs.set(tcId, input);
             totalToolInChars += (chunk.inputTextDelta || "").length;
             tokUp();
             try {
-              const parsed = JSON.parse(currentToolInput);
+              const parsed = JSON.parse(input);
               const display = parsed.command || parsed.path || JSON.stringify(parsed);
-              currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
+              tcEl.innerHTML = `<div class="label">${escapeHtml(toolCallNames.get(tcId) || "tool")}</div>${escapeHtml(display)}`;
             } catch {}
             scrollToBottom();
           }
@@ -754,29 +885,34 @@ async function processUIStream(body) {
         }
 
         case "tool-input-available": {
-          if (currentToolCallEl && chunk.input) {
+          const tcId = chunk.toolCallId;
+          const tcEl = toolCallElements.get(tcId);
+          if (tcEl && chunk.input) {
             const display = chunk.input.command || chunk.input.path || JSON.stringify(chunk.input);
-            currentToolCallEl.innerHTML = `<div class="label">${escapeHtml(currentToolName)}</div>${escapeHtml(display)}`;
+            tcEl.innerHTML = `<div class="label">${escapeHtml(toolCallNames.get(tcId) || chunk.toolName || "tool")}</div>${escapeHtml(display)}`;
             scrollToBottom();
           }
           break;
         }
 
         case "tool-output-available": {
-          const resultEl = document.createElement("div");
-          resultEl.className = "tool-result";
           const output = typeof chunk.output === "string"
             ? chunk.output
             : JSON.stringify(chunk.output, null, 2);
           totalToolOutChars += output.length;
           tokUp();
-          const truncated = output.length > 2000
-            ? output.slice(0, 2000) + "\n... (truncated)"
-            : output;
-          resultEl.innerHTML = `<div class="label">output</div>${escapeHtml(truncated)}`;
-          document.getElementById("messages").appendChild(resultEl);
-          currentToolCallEl = null;
-          currentToolInput = "";
+          const outTokens = Math.ceil(output.length / 4);
+          const tcId = chunk.toolCallId;
+          const tcEl = toolCallElements.get(tcId);
+          if (tcEl) {
+            const tokLine = document.createElement("div");
+            tokLine.className = "tool-tokens";
+            tokLine.textContent = `↳ ${outTokens.toLocaleString()} tokens`;
+            tcEl.appendChild(tokLine);
+            toolCallElements.delete(tcId);
+            toolCallInputs.delete(tcId);
+            toolCallNames.delete(tcId);
+          }
           scrollToBottom();
           break;
         }
@@ -784,14 +920,17 @@ async function processUIStream(body) {
         case "tool-output-error": {
           totalToolOutChars += (chunk.errorText || "").length;
           tokUp();
-          const errEl = document.createElement("div");
-          errEl.className = "tool-result";
-          errEl.style.borderColor = "rgba(248,81,73,0.3)";
-          errEl.style.color = "var(--red)";
-          errEl.innerHTML = `<div class="label">error</div>${escapeHtml(chunk.errorText || "Tool error")}`;
-          document.getElementById("messages").appendChild(errEl);
-          currentToolCallEl = null;
-          currentToolInput = "";
+          const tcId = chunk.toolCallId;
+          const tcEl = toolCallElements.get(tcId);
+          if (tcEl) {
+            const tokLine = document.createElement("div");
+            tokLine.className = "tool-tokens error";
+            tokLine.textContent = `↳ error`;
+            tcEl.appendChild(tokLine);
+            toolCallElements.delete(tcId);
+            toolCallInputs.delete(tcId);
+            toolCallNames.delete(tcId);
+          }
           scrollToBottom();
           break;
         }
@@ -904,11 +1043,100 @@ function copyPrompt() {
   setTimeout(() => btn.textContent = "Copy", 1500);
 }
 
+// ── Render repo links in topbar ──────────────────────────────────
+function renderRepoLinks() {
+  const el = document.getElementById("repoLabel");
+  el.innerHTML = currentRepos.map(r =>
+    `<a href="https://github.com/${escapeHtml(r)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${escapeHtml(r)}</a>`
+  ).join(", ");
+}
+
+// ── Strategy picker sync ─────────────────────────────────────────
+function getSelectedStrategy() {
+  const el = document.querySelector('input[name="setupStrategy"]:checked') || document.querySelector('input[name="topbarStrategy"]:checked');
+  return el ? el.value : "tree-readmes";
+}
+
+function syncStrategyPickers(value) {
+  currentStrategy = value;
+  document.querySelectorAll('input[name="setupStrategy"], input[name="topbarStrategy"]').forEach(el => {
+    el.checked = el.value === value;
+  });
+  updateStrategyTokenCount();
+}
+
+function updateStrategyTokenCount() {
+  const btn = document.getElementById("systemPromptBtn");
+  if (systemPromptTokens > 0) {
+    btn.textContent = `System Prompt (${systemPromptTokens.toLocaleString()})`;
+  } else {
+    btn.textContent = "System Prompt";
+  }
+}
+
+document.querySelectorAll('input[name="setupStrategy"]').forEach(el => {
+  el.addEventListener("change", () => syncStrategyPickers(el.value));
+});
+document.querySelectorAll('input[name="topbarStrategy"]').forEach(el => {
+  el.addEventListener("change", async () => {
+    syncStrategyPickers(el.value);
+    if (currentRepos.length > 0 && !isStreaming) reloadWithStrategy(el.value);
+  });
+});
+
+async function reloadWithStrategy(strategy) {
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repos: currentRepos, strategy }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    systemPrompt = data.prompt;
+    systemPromptTokens = estimateTokens(systemPrompt);
+    updateStrategyTokenCount();
+    document.getElementById("promptContent").textContent = systemPrompt;
+    appendMessage("assistant", `Switched to **${strategy === "full-context" ? "Full Context" : "Tree & READMEs"}** strategy (~${systemPromptTokens.toLocaleString()} system prompt tokens).`);
+    saveCurrentConversation();
+  } catch (e) {
+    appendMessage("assistant", `Error switching strategy: ${e.message}`);
+    // revert picker
+    syncStrategyPickers(strategy === "full-context" ? "tree-readmes" : "full-context");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Login with repos ─────────────────────────────────────────────
+function loginWithRepos() {
+  const loginUrl = new URL("/auth/login", location.origin);
+  const inputVal = document.getElementById("repoInput").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+  const repos = [...pendingRepos];
+  if (inputVal && inputVal.includes("/") && !repos.includes(inputVal)) repos.push(inputVal);
+  for (const r of repos) loginUrl.searchParams.append("repo", r);
+  location.href = loginUrl.toString();
+}
+
+// ── Sidebar toggle (mobile) ──────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("open");
+  document.getElementById("sidebarBackdrop").classList.toggle("open");
+}
+
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarBackdrop").classList.remove("open");
+}
+
 // Close modals on Escape
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     document.getElementById("promptModal").classList.remove("open");
     document.getElementById("configModal").classList.remove("open");
+    closeSidebar();
   }
 });
 </script>

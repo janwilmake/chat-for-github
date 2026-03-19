@@ -18,15 +18,18 @@ export interface Env {
   UITHUB_CLIENT_SECRET?: string;
 }
 
-const PROVIDER_MODELS: Record<string, { name: string; keyUrl: string; models: { id: string; label: string }[] }> = {
+const PROVIDER_MODELS: Record<
+  string,
+  { name: string; keyUrl: string; models: { id: string; label: string }[] }
+> = {
   anthropic: {
     name: "Anthropic",
     keyUrl: "https://console.anthropic.com/account/keys",
     models: [
       { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
       { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-    ],
+      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }
+    ]
   },
   openai: {
     name: "OpenAI",
@@ -35,20 +38,24 @@ const PROVIDER_MODELS: Record<string, { name: string; keyUrl: string; models: { 
       { id: "gpt-4.1", label: "GPT-4.1" },
       { id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
       { id: "o3", label: "o3" },
-      { id: "o4-mini", label: "o4-mini" },
-    ],
+      { id: "o4-mini", label: "o4-mini" }
+    ]
   },
   xai: {
     name: "xAI",
     keyUrl: "https://console.x.ai",
     models: [
       { id: "grok-3", label: "Grok 3" },
-      { id: "grok-3-mini", label: "Grok 3 Mini" },
-    ],
-  },
+      { id: "grok-3-mini", label: "Grok 3 Mini" }
+    ]
+  }
 };
 
-function createModel(provider: string, model: string, apiKey: string): LanguageModelV1 {
+function createModel(
+  provider: string,
+  model: string,
+  apiKey: string
+): LanguageModelV1 {
   switch (provider) {
     case "openai":
       return createOpenAI({ apiKey })(model);
@@ -75,23 +82,32 @@ export class AuthSessions extends DurableObject<Env> {
         code_verifier TEXT,
         state TEXT,
         client_id TEXT,
+        redirect_repos TEXT,
         created_at INTEGER DEFAULT (unixepoch())
       )
     `);
+    // Migration: add redirect_repos column to existing tables
+    try {
+      this.sql.exec(`ALTER TABLE sessions ADD COLUMN redirect_repos TEXT`);
+    } catch {
+      // Column already exists
+    }
   }
 
   async createSession(
     id: string,
     codeVerifier: string,
     state: string,
-    clientId: string
+    clientId: string,
+    redirectRepos?: string
   ): Promise<void> {
     this.sql.exec(
-      `INSERT OR REPLACE INTO sessions (id, code_verifier, state, client_id) VALUES (?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO sessions (id, code_verifier, state, client_id, redirect_repos) VALUES (?, ?, ?, ?, ?)`,
       id,
       codeVerifier,
       state,
-      clientId
+      clientId,
+      redirectRepos ?? null
     );
   }
 
@@ -100,6 +116,7 @@ export class AuthSessions extends DurableObject<Env> {
     state: string;
     access_token: string | null;
     client_id: string | null;
+    redirect_repos: string | null;
   } | null> {
     const rows = this.sql
       .exec<{
@@ -107,8 +124,9 @@ export class AuthSessions extends DurableObject<Env> {
         state: string;
         access_token: string | null;
         client_id: string | null;
+        redirect_repos: string | null;
       }>(
-        `SELECT code_verifier, state, access_token, client_id FROM sessions WHERE id = ?`,
+        `SELECT code_verifier, state, access_token, client_id, redirect_repos FROM sessions WHERE id = ?`,
         id
       )
       .toArray();
@@ -306,16 +324,18 @@ async function buildRepoPrompt(
   repo: string,
   bearerToken?: string
 ) {
-  const treeResponse = await fetchFromUithub(owner, repo, {
-    bearerToken,
-    omitFiles: true
-  });
-  const filesResponse = await fetchFromUithub(owner, repo, {
-    bearerToken,
-    include: [...AGENT_FILE_GLOBS, ...README_GLOBS].join(","),
-    maxTokens: 50000,
-    omitTree: true
-  });
+  const [treeResponse, filesResponse] = await Promise.all([
+    fetchFromUithub(owner, repo, {
+      bearerToken,
+      omitFiles: true
+    }),
+    fetchFromUithub(owner, repo, {
+      bearerToken,
+      include: [...AGENT_FILE_GLOBS, ...README_GLOBS].join(","),
+      maxTokens: 50000,
+      omitTree: true
+    })
+  ]);
 
   const agentFiles: AgentFile[] = [];
   const readmeFiles: AgentFile[] = [];
@@ -373,6 +393,51 @@ async function buildRepoPrompt(
   };
 }
 
+async function buildFullContextPrompt(
+  owner: string,
+  repo: string,
+  bearerToken?: string
+) {
+  const response = await fetchFromUithub(owner, repo, {
+    bearerToken,
+    maxTokens: 1000000
+  });
+
+  if (response.size.totalTokens > 1000000) {
+    throw new Error(
+      `Repository ${owner}/${repo} is too large for full context (~${response.size.totalTokens.toLocaleString()} tokens, max 1,000,000). Use "Tree & READMEs" strategy instead.`
+    );
+  }
+
+  const sections: string[] = [];
+  sections.push(
+    `# Repository: ${owner}/${repo}\nTotal size: ~${response.size.totalTokens.toLocaleString()} tokens`
+  );
+
+  if (response.tree) {
+    sections.push(
+      "---\n## File Tree\n```\n" + renderTree(response.tree) + "\n```"
+    );
+  }
+
+  if (response.files) {
+    sections.push("---\n## Files\n");
+    for (const [filePath, fileData] of Object.entries(response.files)) {
+      if (fileData.type !== "content" || !fileData.content) continue;
+      const ext = filePath.split(".").pop() || "";
+      sections.push(
+        `### ${filePath}\n\`\`\`${ext}\n${fileData.content}\n\`\`\``
+      );
+    }
+  }
+
+  return {
+    prompt: sections.join("\n\n"),
+    tree: response.tree ?? null,
+    size: response.size
+  };
+}
+
 // ── Fetch all repo files for bash sandbox ────────────────────────────────────
 
 async function fetchRepoFiles(
@@ -382,7 +447,7 @@ async function fetchRepoFiles(
 ): Promise<Record<string, string>> {
   const response = await fetchFromUithub(owner, repo, {
     bearerToken,
-    maxTokens: 200000
+    maxTokens: 100000000
   });
   const files: Record<string, string> = {};
   if (response.files) {
@@ -406,6 +471,7 @@ async function handleChat(
   const body = (await request.json()) as {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     repos: string[];
+    strategy?: string;
     // legacy
     owner?: string;
     repo?: string;
@@ -415,12 +481,15 @@ async function handleChat(
     apiKey?: string;
   };
   const { messages, systemPrompt } = body;
+  const strategy = body.strategy || "tree-readmes";
 
   const aiProvider = body.provider || env.AI_PROVIDER || "anthropic";
   const aiModel = body.model || env.AI_MODEL || "claude-sonnet-4-6";
   const aiApiKey = body.apiKey || env.AI_API_KEY;
   if (!aiApiKey) {
-    return new Response("No API key configured. Open Settings to add one.", { status: 400 });
+    return new Response("No API key configured. Open Settings to add one.", {
+      status: 400
+    });
   }
   const repos: string[] = body.repos?.length
     ? body.repos
@@ -429,6 +498,18 @@ async function handleChat(
       : [];
   if (!messages || repos.length === 0 || !systemPrompt) {
     return new Response("Missing required fields", { status: 400 });
+  }
+
+  const model = createModel(aiProvider, aiModel, aiApiKey);
+
+  if (strategy === "full-context") {
+    // No tools needed — all file contents are in the system prompt
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      messages
+    });
+    return result.toUIMessageStreamResponse();
   }
 
   const bearerToken = (await sessionStub.getToken(sessionId)) ?? undefined;
@@ -448,8 +529,6 @@ async function handleChat(
     })
   );
   const bash = new Bash({ files: allFiles, cwd: "/workspace" });
-
-  const model = createModel(aiProvider, aiModel, aiApiKey);
 
   const result = streamText({
     model,
@@ -474,7 +553,11 @@ async function handleChat(
         description:
           "Read the full contents of a file from the virtual environment. Files are under /workspace/{owner}/{repo}/.",
         inputSchema: z.object({
-          path: z.string().describe("Absolute path to the file, e.g. /workspace/owner/repo/src/index.ts")
+          path: z
+            .string()
+            .describe(
+              "Absolute path to the file, e.g. /workspace/owner/repo/src/index.ts"
+            )
         }),
         execute: async ({ path }: { path: string }) => {
           try {
@@ -485,7 +568,7 @@ async function handleChat(
         }
       })
     },
-    stopWhen: stepCountIs(15)
+    stopWhen: stepCountIs(30)
   });
 
   return result.toUIMessageStreamResponse();
@@ -520,6 +603,14 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // ── Redirect /github.com/:owner/:repo → ?repo=owner/repo ────────
+    const ghMatch = path.match(/^\/github\.com\/([^/]+\/[^/]+)\/?$/);
+    if (ghMatch) {
+      const target = new URL("/", url.origin);
+      target.searchParams.set("repo", ghMatch[1]);
+      return Response.redirect(target.toString(), 302);
+    }
+
     // ── API: available providers/models ───────────────────────────────
     if (path === "/api/config") {
       return Response.json({ providers: PROVIDER_MODELS });
@@ -536,7 +627,19 @@ export default {
       const codeChallenge = await sha256Base64Url(codeVerifier);
       const clientId = await getOrRegisterClient(env, url.origin);
 
-      await sessionStub.createSession(sessionId, codeVerifier, state, clientId);
+      const repos = url.searchParams
+        .getAll("repo")
+        .filter((r) => r.includes("/"));
+      const redirectRepos =
+        repos.length > 0 ? JSON.stringify(repos) : undefined;
+
+      await sessionStub.createSession(
+        sessionId,
+        codeVerifier,
+        state,
+        clientId,
+        redirectRepos
+      );
 
       const authUrl = new URL("https://uithub.com/authorize");
       authUrl.searchParams.set("client_id", clientId);
@@ -593,7 +696,20 @@ export default {
       const tokenData = (await tokenRes.json()) as { access_token: string };
       await sessionStub.setToken(currentSessionId, tokenData.access_token);
 
-      return new Response(null, { status: 302, headers: { Location: "/" } });
+      const redirectUrl = new URL("/", url.origin);
+      if (session.redirect_repos) {
+        try {
+          const repos = JSON.parse(session.redirect_repos) as string[];
+          for (const repo of repos) {
+            redirectUrl.searchParams.append("repo", repo);
+          }
+        } catch {}
+      }
+
+      return new Response(null, {
+        status: 302,
+        headers: { Location: redirectUrl.toString() }
+      });
     }
 
     // ── Auth status ──────────────────────────────────────────────────────
@@ -637,6 +753,7 @@ export default {
     if (path === "/api/prompt" && request.method === "POST") {
       const body = (await request.json()) as {
         repos: string[];
+        strategy?: string;
         // legacy single-repo support
         owner?: string;
         repo?: string;
@@ -649,13 +766,16 @@ export default {
       if (repos.length === 0)
         return new Response("Missing repos", { status: 400 });
 
+      const strategy = body.strategy || "tree-readmes";
       const sid = getSessionId(request);
       const bearerToken = sid ? await sessionStub.getToken(sid) : null;
       try {
+        const builder =
+          strategy === "full-context" ? buildFullContextPrompt : buildRepoPrompt;
         const results = await Promise.all(
           repos.map((r) => {
             const [owner, repo] = r.split("/");
-            return buildRepoPrompt(owner, repo, bearerToken ?? undefined);
+            return builder(owner, repo, bearerToken ?? undefined);
           })
         );
         const combinedPrompt = results.map((r) => r.prompt).join("\n\n---\n\n");
